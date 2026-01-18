@@ -10,6 +10,14 @@
   },
   "dependencies": {
     "@babel/parser": "^7.28.6",
+    "ai": "^6.0.39",
+    "arktype": "^2.1.29",
+    "ollama-ai-provider-v2": "^3.0.1",
     "recast": "^0.23.11"
-  }
+  },
+  "trustedDependencies": [
+    "onnxruntime-node",
+    "protobufjs",
+    "webgpu"
+  ]
 }

@@ -1,10 +1,13 @@
 import type { ASTNode } from "ast-types"
 import * as recast from "recast"
+import { createOllama } from "ollama-ai-provider-v2"
 import path from "node:path"
+import { generateText, Output, streamText } from "ai"
 import ts from "recast/parsers/typescript"
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { type } from "arktype"
 
-function main() {
+async function main() {
   const bigfilepath = path.resolve(process.argv[2]!)
 
   const bigfile = Bun.file(bigfilepath)
@@ -47,10 +50,35 @@ function main() {
     stmts.filter((node) => analyzeVitestImport(node) !== undefined),
     (node) => analyzeVitestImport(node)!,
   )
+  const ollama = createOllama({
+    baseURL: "http://localhost:11434/api",
+  })
 
-  const categorized = Map.groupBy(items, (item) =>
-    categorizeItem(nameOfItem(item)),
-  )
+  const names = items.map((item) => nameOfItem(item))
+
+  console.log("thokang...")
+  const response = streamText({
+    model: ollama("qwen3:4b"),
+    system: `You are an expert TypeScript code analyzer. You will be given a list of TypeScript item names (functions, constants, etc) extracted from a source code file. Your task is to categorize these items into several categories based on their functionality.`,
+    prompt: names.map((name) => `- ${name}`).join("\n"),
+    output: Output.array({
+      element: type({
+        item: "string",
+        category: "string",
+      })
+    }),
+  })
+
+  for await (const chunk of response.fullStream) {
+    console.log("chunk")
+    process.stdout.write(JSON.stringify(chunk, null, 2))
+    console.log("\n")
+  }
+
+  console.log(await response.output)
+  return
+
+  const categorized = Map.groupBy(items, (item) => nameOfItem(item))
 
   const categories = [...categorized.keys()]
 
@@ -113,13 +141,6 @@ function code(node: ASTNode | ASTNode[], newlines = 1): string {
     return node.map((n) => normalCode(n)).join("\n".repeat(newlines))
   }
   return recast.print(node).code
-}
-
-function categorizeItem(name: string): string {
-  // Imagine we uuuuuh have the LLM to categorize things here haha
-  const i = Math.floor(Math.random() * 3)
-
-  return ["utils", "services", "controllers"][i]
 }
 
 // Throw, but as an expression
@@ -192,4 +213,4 @@ function analyzeVitestImport(node: ASTNode): undefined | string {
   return rootTestNames[0]
 }
 
-main()
+await main()
