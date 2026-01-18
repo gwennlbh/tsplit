@@ -34,6 +34,58 @@ function code(node: ASTNode) {
   return recast.prettyPrint(node).code
 }
 
+function categorizeItem(name: string): string {
+  // Imagine we uuuuuh have the LLM to categorize things here haha
+  const i = Math.floor(Math.random() * 3)
+
+  return ["utils", "services", "controllers"][i]
+}
+
+// Throw, but as an expression
+function throwError(msg: string): never {
+  throw new Error(msg)
+}
+
+function nameOfItem(node: ASTNode): string {
+  switch (node.type) {
+    case "VariableDeclaration":
+      return node.declarations[0].id.type === "Identifier"
+        ? node.declarations[0].id.name
+        : throwError("Unsupported variable declaration")
+    case "FunctionDeclaration":
+      return node.id
+        ? node.id.name
+        : throwError("Anonymous function declaration")
+    case "ExportNamedDeclaration":
+      if (node.declaration) {
+        return nameOfItem(node.declaration)
+      } else {
+        throwError("Unsupported export named declaration without declaration")
+      }
+    default:
+      throwError("Unsupported item type for naming")
+  }
+}
+
+const categorized = Map.groupBy(items, (item) =>
+  categorizeItem(nameOfItem(item)),
+)
+
+const files = new Map<string, string>()
+
+for (const [category, items] of categorized.entries()) {
+  const content = items.map(code)
+
+  files.set(
+    `${bigfile.name?.replace(/\.[jt]s$/, "")}/${category}.ts`,
+    content.join("\n\n"),
+  )
+}
+
+for (const [filename, contents] of files.entries()) {
+  console.log(`--- ${filename} ---\n${contents}\n`)
+}
+
 /**
  * Return name of the function tested in the given IfStatement node,
  * if it is indeed a Vitest inline test (if (import.meta.vitest) { ... }).)
