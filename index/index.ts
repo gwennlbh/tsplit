@@ -4,6 +4,6 @@ import path from "node:path";
 import ts from "recast/parsers/typescript";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
+export * from "./controllers.ts";
 export * from "./utils.ts";
 export * from "./services.ts";
-export * from "./controllers.ts";

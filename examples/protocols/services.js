@@ -10,107 +10,131 @@ import { ExportedProtocol, Protocol } from "./schemas/protocols.js";
 import { cachebust, fetchHttpRequest, fromEntries, keys, omit, pick, range, sum } from "./utils.js";
 
 /**
- * Turn a database-stored protocol into an object suitable for export.
- * @param {import('./idb.svelte.js').DatabaseHandle} db
- * @param {typeof Tables.Protocol.infer} protocol
+ * Downloads a protocol as a JSON file
+ * @param {string} base base path of the app - import `base` from `$app/paths`
+ * @param {'yaml'|'json'} format
+ * @param {typeof import('./schemas/protocols.js').ExportedProtocol.infer} exportedProtocol
  */
-export async function toExportedProtocol(db, protocol) {
-    const allMetadataOptions = await db.getAll("MetadataOption", metadataOptionsKeyRange(protocol.id, null));
+function downloadProtocol(base, format, exportedProtocol) {
+    let jsoned = stringifyWithToplevelOrdering(
+        format,
+        jsonSchemaURL(base),
+        exportedProtocol,
+        ["id", "name", "source", "authors", "exports", "metadata", "inference"]
+    );
 
-    const allMetadataDefs = Object.fromEntries(await db.getAll("Metadata").then(defs => defs.filter(
-        def => protocol.metadata.includes(def.id) || protocol.sessionMetadata.includes(def.id)
-    ).map(metadata => [metadata.id, {
-        ...omit(metadata, "id"),
-
-        options: allMetadataOptions.filter((
-            {
-                id
-            }
-        ) => metadataOptionsKeyRange(protocol.id, metadata.id).includes(id)).map(option => omit(option, "id", "metadataId"))
-    }])));
-
-    return ExportedProtocol.assert({
-        ...omit(protocol, "dirty"),
-
-        exports: {
-            ...protocol.exports,
-
-            ...(protocol.exports ? {
-                images: {
-                    cropped: protocol.exports.images.cropped.toJSON(),
-                    original: protocol.exports.images.original.toJSON()
-                }
-            } : {})
-        },
-
-        metadata: pick(
-            allMetadataDefs,
-            ...protocol.metadata.filter(id => !protocol.sessionMetadata.includes(id))
-        ),
-
-        sessionMetadata: pick(allMetadataDefs, ...protocol.sessionMetadata)
-    });
+    // application/yaml is finally a thing, see https://www.rfc-editor.org/rfc/rfc9512.html
+    downloadAsFile(jsoned, `${exportedProtocol.id}.${format}`, `application/${format}`);
 }
 
 /**
- * Imports protocol(s) from JSON file(s).
- * Asks the user to select files, then imports the protocols from those files.
- * @template {{id: string, name: string, version: number|undefined}} Out
- * @template {boolean|undefined} Multiple
- * @param {object} param0
- * @param {Multiple} param0.allowMultiple allow the user to select multiple files
- * @param {() => void} [param0.onInput] callback to call when the user selected files
- * @param {((input: {contents: string, isJSON: boolean}) => Promise<{id: string, name: string, version: number|undefined}>)} param0.importProtocol
- * @returns {Promise<Multiple extends true ? NoInfer<Out>[] : NoInfer<Out>>}
+ *
+ * @param {Pick<typeof Schemas.Protocol.infer, 'version'|'source'|'id'>} protocol
+ * @returns {Promise< { upToDate: boolean; newVersion: number }>}
  */
-export async function promptAndImportProtocol(
+export async function hasUpgradeAvailable(
     {
-        allowMultiple,
-        onInput = () => {},
-        importProtocol
+        version,
+        source,
+        id
     }
 ) {
-    const files = await promptForFiles({
-        multiple: allowMultiple,
-        accept: ".json,.yaml,application/json"
+    if (!source)
+        throw new Error("Le protocole n'a pas de source");
+
+    if (!version)
+        throw new Error("Le protocole n'a pas de version");
+
+    if (!id)
+        throw new Error("Le protocole n'a pas d'identifiant");
+
+    const response = await fetch(
+        cachebust(typeof source === "string" ? source : source.url),
+        typeof source !== "string" ? source : {
+            headers: {
+                Accept: "application/json"
+            }
+        }
+    ).then(r => r.json()).then(type({
+        "version?": "number",
+        id: "string"
+    }).assert);
+
+    if (!response.version)
+        throw new Error("Le protocole n'a plus de version");
+
+    if (response.id !== id)
+        throw new Error("Le protocole a changé d'identifiant");
+
+    if (response.version > version) {
+        return {
+            upToDate: false,
+            newVersion: response.version
+        };
+    }
+
+    return {
+        upToDate: true,
+        newVersion: response.version
+    };
+}
+
+/**
+ * @param {object} param0
+ * @param {number} [param0.version]
+ * @param {import('$lib/database.js').HTTPRequest} param0.source
+ * @param {string} param0.id
+ * @param {import('swarpc').SwarpcClient<typeof import('$worker/procedures.js').PROCEDURES>} param0.swarpc
+ */
+export async function upgradeProtocol(
+    {
+        version,
+        source,
+        id,
+        swarpc
+    }
+) {
+    if (!source)
+        throw new Error("Le protocole n'a pas de source");
+
+    if (!version)
+        throw new Error("Le protocole n'a pas de version");
+
+    if (!id)
+        throw new Error("Le protocole n'a pas d'identifiant");
+
+    if (typeof source !== "string")
+        throw new Error("Les requêtes HTTP ne sont pas encore supportées, utilisez une URL");
+
+    const {
+        tables
+    } = await import("./idb.svelte.js");
+
+    const contents = await fetch(cachebust(source), {
+        headers: {
+            Accept: "application/json"
+        }
+    }).then(r => r.text());
+
+    const result = await swarpc.importProtocol({
+        contents
     });
 
-    onInput();
+    tables.Protocol.refresh(null);
+    tables.Metadata.refresh(null);
 
-    /** @type {Array<{id: string, name: string, version: number | undefined}>}  */
-    const output = await Promise.all([...files].map(async file => {
-        console.time(`Reading file ${file.name}`);
-        const reader = new FileReader();
+    const {
+        version: newVersion,
+        ...rest
+    } = result;
 
-        return new Promise(resolve => {
-            reader.onload = async () => {
-                if (!reader.result)
-                    throw new Error("Fichier vide");
+    if (newVersion === undefined)
+        throw new Error("Le protocole a été importé mais n'a plus de version");
 
-                if (reader.result instanceof ArrayBuffer)
-                    throw new Error("Fichier binaire");
-
-                console.timeEnd(`Reading file ${file.name}`);
-
-                const result = await importProtocol({
-                    contents: reader.result,
-                    isJSON: file.name.endsWith(".json")
-                }).catch(err => Promise.reject(new Error(errorMessage(err))));
-
-                const {
-                    tables
-                } = await import("./idb.svelte.js");
-
-                await tables.Protocol.refresh(null);
-                await tables.Metadata.refresh(null);
-                resolve(result);
-            };
-
-            reader.readAsText(file);
-        });
-    }));
-
-    return allowMultiple ? output : output[0];
+    return {
+        version: newVersion,
+        ...rest
+    };
 }
 
 /**
@@ -280,4 +304,51 @@ export async function compareProtocolWithUpstream(
 
     await incrementProgress(progressTotals.postProcess);
     return cleanedDiffs;
+}
+
+/**
+ *
+ * @param {import('./idb.svelte.js').DatabaseHandle} db
+ * @param {import('swarpc').SwarpcClient<typeof PROCEDURES>} swarpc
+ */
+export async function autoUpdateProtocols(db, swarpc) {
+    const protocols = await db.getAll("Protocol").then(ps => ps.map(p => Protocol.assert(p)));
+    const _settings = (await db.get("Settings", "user")) ?? (await db.get("Settings", "default"));
+    const settings = _settings ? Schemas.Settings.assert(_settings) : undefined;
+
+    const toUpdate = protocols.filter(p => {
+        if (settings && p.id in settings.autoUpdateProtocols) {
+            return settings.autoUpdateProtocols[p.id];
+        }
+
+        return p.updates === "automatic";
+    });
+
+    console.info(
+        `Auto-updating protocols:`,
+        toUpdate.map(p => `${p.id} (${p.name}, v${p.version ?? "<none>"})`)
+    );
+
+    const results = await Promise.allSettled(toUpdate.map(async protocol => {
+        const {
+            upToDate,
+            newVersion
+        } = await hasUpgradeAvailable(protocol);
+
+        if (upToDate) {
+            console.debug(`[Protocol auto-update] Protocol ${protocol.id} is up to date`);
+            return;
+        }
+
+        console.debug(
+            `[Protocol auto-update] Upgrading protocol ${protocol.id} from v${protocol.version} to v${newVersion}`
+        );
+
+        return await upgradeProtocol({
+            ...protocol,
+            swarpc
+        });
+    }));
+
+    return results.filter(r => r.status === "fulfilled").map(r => r.value).filter(v => v !== undefined);
 }

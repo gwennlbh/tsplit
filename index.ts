@@ -59,7 +59,16 @@ function main() {
   const files = new Map<string, string>()
 
   for (const [category, items] of categorized.entries()) {
-    const content = code(imports) + "\n\n" + code(items, 2)
+    const content =
+      code(imports) +
+      "\n\n" +
+      code(
+        items.flatMap((item) => [
+          item,
+          ...(inlineTests.get(nameOfItem(item)) ?? []),
+        ]),
+        2,
+      )
 
     files.set(path.join(root, `${category}.${ext}`), content)
   }
@@ -92,11 +101,18 @@ function main() {
   }
 }
 
-function code(node: ASTNode | ASTNode[], newlines = 1): string {
+function normalCode(node: ASTNode | ASTNode[], newlines = 1): string {
   if (Array.isArray(node)) {
-    return node.map((n) => code(n)).join("\n".repeat(newlines))
+    return node.map((n) => normalCode(n)).join("\n".repeat(newlines))
   }
   return recast.prettyPrint(node).code
+}
+
+function code(node: ASTNode | ASTNode[], newlines = 1): string {
+  if (Array.isArray(node)) {
+    return node.map((n) => normalCode(n)).join("\n".repeat(newlines))
+  }
+  return recast.print(node).code
 }
 
 function categorizeItem(name: string): string {
@@ -116,22 +132,22 @@ function nameOfItem(node: ASTNode): string {
     case "VariableDeclaration":
       return node.declarations[0].id.type === "Identifier"
         ? node.declarations[0].id.name
-        : throwError("Unsupported variable declaration: " + code(node))
+        : throwError("Unsupported variable declaration: " + normalCode(node))
     case "FunctionDeclaration":
       return node.id
         ? node.id.name
-        : throwError("Anonymous function declaration: " + code(node))
+        : throwError("Anonymous function declaration: " + normalCode(node))
     case "ExportNamedDeclaration":
       if (node.declaration) {
         return nameOfItem(node.declaration)
       } else {
         throwError(
           "Unsupported export named declaration without declaration: " +
-            code(node),
+            normalCode(node),
         )
       }
     default:
-      throwError("Unsupported item type for naming: " + code(node))
+      throwError("Unsupported item type for naming: " + normalCode(node))
   }
 }
 
@@ -145,13 +161,13 @@ function nameOfItem(node: ASTNode): string {
  */
 function analyzeVitestImport(node: ASTNode): undefined | string {
   if (node.type !== "IfStatement") return undefined
-  if (code(node.test) !== "import.meta.vitest") return undefined
+  if (normalCode(node.test) !== "import.meta.vitest") return undefined
   const first = node.consequent.body.at(0)
   if (first?.type !== "VariableDeclaration") return undefined
   const decl = first.declarations.at(0)
   if (!decl || decl.type !== "VariableDeclarator") return undefined
   const { id, init } = decl
-  if (code(init) !== "import.meta.vitest") return undefined
+  if (normalCode(init) !== "import.meta.vitest") return undefined
   if (id.type !== "ObjectPattern") return undefined
   const props = new Set(
     id.properties
