@@ -61,7 +61,7 @@ async function main() {
   console.log("thokang...")
   const response = streamText({
     model: ollama("qwen3:4b"),
-    system: `You are an expert TypeScript code analyzer. You will be given a list of TypeScript item names (functions, constants, etc) extracted from a source code file. Your task is to categorize these items into several categories based on their functionality. The category names must not contain space and be all lowercase, as they will be used to construct file names. Prefer single words for category names if possible. The name of the file you're analyzing is ${path.basename(bigfilepath)} (so don't use its name as a category). Never use a item's name as the category name, unless it's really necessary.`,
+    system: `You are an expert TypeScript code analyzer. You will be given a list of TypeScript item names (functions, constants, etc) extracted from a source code file. Your task is to categorize these items into several categories based on their functionality. The category names must not contain spaces and must be all lowercase, as they will be used to construct file names. Prefer single words for category names if possible, otherwise separate words with dashes. The name of the file you're analyzing is ${path.basename(bigfilepath)} (so don't use its name as a category). Never use a item's name as the category name, unless it's really necessary.`,
     prompt: Object.keys(byName)
       .map((name) => `- ${name}`)
       .join("\n"),
