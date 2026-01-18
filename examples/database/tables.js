@@ -16,21 +16,34 @@ import { FilepathTemplate, ModelDetectionOutputShape, Protocol as ProtocolSchema
 import { Session as SessionSchema } from "./schemas/sessions.js";
 import { clamp } from "./utils.js";
 
-/**
- *
- * @template {keyof typeof Tables} TableName
- * @param {TableName} name
- * @returns {name is Exclude<TableName, typeof NO_REACTIVE_STATE_TABLES[number]>}
- */
-export function isReactiveTable(name) {
-    return NO_REACTIVE_STATE_TABLES.every(n => n !== name);
-}
+export const Tables = {
+    Image,
+    ImageFile,
+    ImagePreviewFile,
+    Observation,
+    Session,
+    Metadata,
+    MetadataOption,
+    Protocol,
+    Settings
+};
 
 /**
- * @template {keyof typeof Tables} TableName
- * @param {TableName} name
- * @returns {name is typeof SESSION_DEPENDENT_REACTIVE_TABLES[number]}
+ *
+ * @param {string|string[]} keyPaths expanded to an array.
+ * Every element is an index to be created.
+ * Indexes are dot-joined paths to keys in the objects.
+ * First index is given as the keyPath argument when creating the object store instead.
+ * @param {Schema} schema
+ * @template {import('arktype').Type} Schema
+ * @returns
  */
-export function isSessionDependentReactiveTable(name) {
-    return SESSION_DEPENDENT_REACTIVE_TABLES.some(n => n === name);
+function table(keyPaths, schema) {
+    const expandedKeyPaths = Array.isArray(keyPaths) ? keyPaths.map(keyPath => keyPath) : [keyPaths];
+
+    return schema.configure({
+        table: {
+            indexes: expandedKeyPaths
+        }
+    });
 }

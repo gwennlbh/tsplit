@@ -16,21 +16,24 @@ import { FilepathTemplate, ModelDetectionOutputShape, Protocol as ProtocolSchema
 import { Session as SessionSchema } from "./schemas/sessions.js";
 import { clamp } from "./utils.js";
 
-/**
- *
- * @template {keyof typeof Tables} TableName
- * @param {TableName} name
- * @returns {name is Exclude<TableName, typeof NO_REACTIVE_STATE_TABLES[number]>}
- */
-export function isReactiveTable(name) {
-    return NO_REACTIVE_STATE_TABLES.every(n => n !== name);
-}
-
-/**
- * @template {keyof typeof Tables} TableName
- * @param {TableName} name
- * @returns {name is typeof SESSION_DEPENDENT_REACTIVE_TABLES[number]}
- */
-export function isSessionDependentReactiveTable(name) {
-    return SESSION_DEPENDENT_REACTIVE_TABLES.some(n => n === name);
-}
+export const Schemas = {
+    ID,
+    FilepathTemplate,
+    Probability,
+    MetadataValues,
+    MetadataValue,
+    Image,
+    ModelInput,
+    ModelDetectionOutputShape,
+    Observation,
+    Session,
+    MetadataInferOptions,
+    MetadataTypeSchema,
+    MetadataMergeMethod,
+    MetadataEnumVariant,
+    Metadata,
+    Protocol,
+    Settings,
+    EXIFField,
+    HTTPRequest
+};

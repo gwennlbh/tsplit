@@ -9,10 +9,23 @@ import { MetadataInferOptionsNeural } from "./schemas/metadata.js";
 import { ExportedProtocol, Protocol } from "./schemas/protocols.js";
 import { cachebust, fetchHttpRequest, fromEntries, keys, omit, pick, range, sum } from "./utils.js";
 
-export * from "./jsonSchemaURL.js";
-export * from "./export.js";
-export * from "./import.js";
-export * from "./upgrade.js";
-export * from "./autoUpdate.js";
-export * from "./comparator.js";
-export * from "./metadata.js";
+/**
+ *
+ * @param {{metadataOrder?: undefined | string[]}} protocol
+ * @returns {import('./utils.js').Comparator< string | { id: string }>}
+ */
+export function metadataDefinitionComparator(protocol) {
+    return (a, b) => {
+        if (typeof a !== "string")
+            a = a.id;
+
+        if (typeof b !== "string")
+            b = b.id;
+
+        if (protocol.metadataOrder) {
+            return protocol.metadataOrder.indexOf(a) - protocol.metadataOrder.indexOf(b);
+        }
+
+        return idComparator(a, b);
+    };
+}

@@ -16,21 +16,6 @@ import { FilepathTemplate, ModelDetectionOutputShape, Protocol as ProtocolSchema
 import { Session as SessionSchema } from "./schemas/sessions.js";
 import { clamp } from "./utils.js";
 
-/**
- *
- * @template {keyof typeof Tables} TableName
- * @param {TableName} name
- * @returns {name is Exclude<TableName, typeof NO_REACTIVE_STATE_TABLES[number]>}
- */
-export function isReactiveTable(name) {
-    return NO_REACTIVE_STATE_TABLES.every(n => n !== name);
-}
+export const NO_REACTIVE_STATE_TABLES /** @type {const} */ = (["ImageFile", "ImagePreviewFile", "MetadataOption"]);
 
-/**
- * @template {keyof typeof Tables} TableName
- * @param {TableName} name
- * @returns {name is typeof SESSION_DEPENDENT_REACTIVE_TABLES[number]}
- */
-export function isSessionDependentReactiveTable(name) {
-    return SESSION_DEPENDENT_REACTIVE_TABLES.some(n => n === name);
-}
+const SESSION_DEPENDENT_REACTIVE_TABLES /** @type {const} */ = (["Image", "Observation"]);

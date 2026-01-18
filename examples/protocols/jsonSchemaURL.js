@@ -9,10 +9,16 @@ import { MetadataInferOptionsNeural } from "./schemas/metadata.js";
 import { ExportedProtocol, Protocol } from "./schemas/protocols.js";
 import { cachebust, fetchHttpRequest, fromEntries, keys, omit, pick, range, sum } from "./utils.js";
 
-export * from "./jsonSchemaURL.js";
-export * from "./export.js";
-export * from "./import.js";
-export * from "./upgrade.js";
-export * from "./autoUpdate.js";
-export * from "./comparator.js";
-export * from "./metadata.js";
+/**
+ * @import { Tables } from './database.js';
+ * @import { PROCEDURES } from '$worker/procedures.js';
+ * @import * as DB from '$lib/database.js'
+ */
+
+/**
+ *
+ * @param {string} base base path of the app - import `base` from `$app/paths`
+ */
+export function jsonSchemaURL(base) {
+    return `${window.location.origin}${base}/protocol.schema.json`;
+}

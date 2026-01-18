@@ -19,4 +19,4 @@ TODO
 - [ ] turn all items into exports, and import all items from all other files into each file (things like linters and knip should be run by the user afterwards to clean stuff up)
 - [ ] pretty UI to show progress, what went where, etc
 - [ ] tests
-- [ ] how 2 run a (local!) llm??? idkk
+- [x] how 2 run a (local!) llm??? idkk

@@ -54,31 +54,37 @@ async function main() {
     baseURL: "http://localhost:11434/api",
   })
 
-  const names = items.map((item) => nameOfItem(item))
+  const byName = Object.fromEntries(
+    items.map((item) => [nameOfItem(item), item]),
+  )
 
   console.log("thokang...")
   const response = streamText({
     model: ollama("qwen3:4b"),
-    system: `You are an expert TypeScript code analyzer. You will be given a list of TypeScript item names (functions, constants, etc) extracted from a source code file. Your task is to categorize these items into several categories based on their functionality.`,
-    prompt: names.map((name) => `- ${name}`).join("\n"),
+    system: `You are an expert TypeScript code analyzer. You will be given a list of TypeScript item names (functions, constants, etc) extracted from a source code file. Your task is to categorize these items into several categories based on their functionality. The category names must not contain space and be all lowercase, as they will be used to construct file names. Prefer single words for category names if possible. The name of the file you're analyzing is ${path.basename(bigfilepath)} (so don't use its name as a category).`,
+    prompt: Object.keys(byName)
+      .map((name) => `- ${name}`)
+      .join("\n"),
     output: Output.array({
       element: type({
         item: "string",
         category: "string",
-      })
+      }),
     }),
   })
 
   for await (const chunk of response.fullStream) {
-    console.log("chunk")
-    process.stdout.write(JSON.stringify(chunk, null, 2))
-    console.log("\n")
+    if (chunk.type === "text-delta") {
+      process.stdout.write(chunk.text)
+    }
   }
 
-  console.log(await response.output)
-  return
-
-  const categorized = Map.groupBy(items, (item) => nameOfItem(item))
+  const categorized = await response.output.then((pairs) => {
+    return Map.groupBy(
+      pairs.map((p) => byName[p.item]!),
+      (item) => pairs.find((p) => nameOfItem(item) === p.item)!.category,
+    )
+  })
 
   const categories = [...categorized.keys()]
 
