@@ -2,50 +2,95 @@ import type { ASTNode } from "ast-types"
 import * as recast from "recast"
 import path from "node:path"
 import ts from "recast/parsers/typescript"
-import { mkdirSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 
-const bigfilepath = path.resolve(process.argv[2]!)
+function main() {
+  const bigfilepath = path.resolve(process.argv[2]!)
 
-const bigfile = Bun.file(bigfilepath)
+  const bigfile = Bun.file(bigfilepath)
 
-const [stem, ...exts] = path.basename(bigfilepath).split(".") as [
-  string,
-  ...string[],
-]
+  const [stem, ...exts] = path.basename(bigfilepath).split(".") as [
+    string,
+    ...string[],
+  ]
 
-const root = path.join(path.dirname(bigfilepath), stem)
+  const root = path.join(path.dirname(bigfilepath), stem)
 
-console.log(`creating ${root}`)
+  console.log(`creating ${root}`)
 
-mkdirSync(root, { recursive: true })
+  mkdirSync(root, { recursive: true })
 
-const ext = exts.join(".")
+  const ext = exts.join(".")
 
-const bigsource = await bigfile.text()
+  const bigsource = readFileSync(bigfilepath, "utf-8")
 
-const stmts: ASTNode[] = recast.parse(bigsource, { parser: ts }).program.body
+  const stmts: ASTNode[] = recast.parse(bigsource, { parser: ts }).program.body
 
-const imports = stmts.filter((s) => s.type === "ImportDeclaration")
+  const imports = stmts.filter((s) => s.type === "ImportDeclaration")
 
-const ITEM_TYPES = new Set([
-  "VariableDeclaration",
-  "FunctionDeclaration",
-  "ExportNamedDeclaration",
-])
+  const ITEM_TYPES = new Set([
+    "VariableDeclaration",
+    "FunctionDeclaration",
+    "ExportNamedDeclaration",
+  ])
 
-const items = stmts.filter((s) => ITEM_TYPES.has(s.type))
+  const items = stmts.filter((s) => ITEM_TYPES.has(s.type))
 
-const unsupportedItems = stmts.filter(
-  (s) =>
-    !ITEM_TYPES.has(s.type) &&
-    s.type !== "ImportDeclaration" &&
-    !analyzeVitestImport(s),
-)
+  const unsupportedItems = stmts.filter(
+    (s) =>
+      !ITEM_TYPES.has(s.type) &&
+      s.type !== "ImportDeclaration" &&
+      !analyzeVitestImport(s),
+  )
 
-const inlineTests = Map.groupBy(
-  stmts.filter((node) => analyzeVitestImport(node) !== undefined),
-  (node) => analyzeVitestImport(node)!,
-)
+  const inlineTests = Map.groupBy(
+    stmts.filter((node) => analyzeVitestImport(node) !== undefined),
+    (node) => analyzeVitestImport(node)!,
+  )
+
+  const categorized = Map.groupBy(items, (item) =>
+    categorizeItem(nameOfItem(item)),
+  )
+
+  const categories = [...categorized.keys()]
+
+  console.log({ categories })
+
+  const files = new Map<string, string>()
+
+  for (const [category, items] of categorized.entries()) {
+    const content = code(imports) + "\n\n" + code(items, 2)
+
+    files.set(path.join(root, `${category}.${ext}`), content)
+  }
+
+  files.set(
+    path.join(root, `index.${ext}`),
+    code(imports) +
+      "\n\n" +
+      categories
+        .map((filepath) => {
+          const name = path.basename(filepath)
+          return `export * from "./${name}.${ext}";`
+        })
+        .join("\n"),
+  )
+
+  for (const [filename, contents] of files.entries()) {
+    console.log(`writing ${filename}`)
+    writeFileSync(filename, contents)
+  }
+
+  unsupportedItems.forEach(analyzeVitestImport)
+
+  if (unsupportedItems.length > 0) {
+    for (const item of unsupportedItems) {
+      console.error("- " + recast.print(item).code)
+    }
+
+    throw new Error(`Unsupported statements in source file.`)
+  }
+}
 
 function code(node: ASTNode | ASTNode[], newlines = 1): string {
   if (Array.isArray(node)) {
@@ -71,53 +116,23 @@ function nameOfItem(node: ASTNode): string {
     case "VariableDeclaration":
       return node.declarations[0].id.type === "Identifier"
         ? node.declarations[0].id.name
-        : throwError("Unsupported variable declaration")
+        : throwError("Unsupported variable declaration: " + code(node))
     case "FunctionDeclaration":
       return node.id
         ? node.id.name
-        : throwError("Anonymous function declaration")
+        : throwError("Anonymous function declaration: " + code(node))
     case "ExportNamedDeclaration":
       if (node.declaration) {
         return nameOfItem(node.declaration)
       } else {
-        throwError("Unsupported export named declaration without declaration")
+        throwError(
+          "Unsupported export named declaration without declaration: " +
+            code(node),
+        )
       }
     default:
-      throwError("Unsupported item type for naming")
+      throwError("Unsupported item type for naming: " + code(node))
   }
-}
-
-const categorized = Map.groupBy(items, (item) =>
-  categorizeItem(nameOfItem(item)),
-)
-
-const categories = [...categorized.keys()]
-
-console.log({ categories })
-
-const files = new Map<string, string>()
-
-for (const [category, items] of categorized.entries()) {
-  const content = code(imports) + "\n\n" + code(items, 2)
-
-  files.set(path.join(root, `${category}.${ext}`), content)
-}
-
-files.set(
-  path.join(root, `index.${ext}`),
-  code(imports) +
-    "\n\n" +
-    categories
-      .map((filepath) => {
-        const name = path.basename(filepath)
-        return `export * from "./${name}.${ext}";`
-      })
-      .join("\n"),
-)
-
-for (const [filename, contents] of files.entries()) {
-  console.log(`writing ${filename}`)
-  writeFileSync(filename, contents)
 }
 
 /**
@@ -161,12 +176,4 @@ function analyzeVitestImport(node: ASTNode): undefined | string {
   return rootTestNames[0]
 }
 
-unsupportedItems.forEach(analyzeVitestImport)
-
-if (unsupportedItems.length > 0) {
-  for (const item of unsupportedItems) {
-    console.error("- " + recast.print(item).code)
-  }
-
-  throw new Error(`Unsupported statements in source file.`)
-}
+main()
