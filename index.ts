@@ -61,7 +61,7 @@ async function main() {
   console.log("thokang...")
   const response = streamText({
     model: ollama("qwen3:4b"),
-    system: `You are an expert TypeScript code analyzer. You will be given a list of TypeScript item names (functions, constants, etc) extracted from a source code file. Your task is to categorize these items into several categories based on their functionality. The category names must not contain space and be all lowercase, as they will be used to construct file names. Prefer single words for category names if possible. The name of the file you're analyzing is ${path.basename(bigfilepath)} (so don't use its name as a category).`,
+    system: `You are an expert TypeScript code analyzer. You will be given a list of TypeScript item names (functions, constants, etc) extracted from a source code file. Your task is to categorize these items into several categories based on their functionality. The category names must not contain space and be all lowercase, as they will be used to construct file names. Prefer single words for category names if possible. The name of the file you're analyzing is ${path.basename(bigfilepath)} (so don't use its name as a category). Never use a item's name as the category name, unless it's really necessary.`,
     prompt: Object.keys(byName)
       .map((name) => `- ${name}`)
       .join("\n"),
@@ -73,9 +73,12 @@ async function main() {
     }),
   })
 
-  for await (const chunk of response.fullStream) {
-    if (chunk.type === "text-delta") {
-      process.stdout.write(chunk.text)
+  let seenItems = new Set<string>()
+  for await (const chunk of response.partialOutputStream) {
+    for (const { item, category } of chunk) {
+      if (seenItems.has(item)) continue
+      console.info(`${item} => ${category}`)
+      seenItems.add(item)
     }
   }
 
