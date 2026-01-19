@@ -9,10 +9,11 @@ import { MetadataInferOptionsNeural } from "./schemas/metadata.js";
 import { ExportedProtocol, Protocol } from "./schemas/protocols.js";
 import { cachebust, fetchHttpRequest, fromEntries, keys, omit, pick, range, sum } from "./utils.js";
 
-export * from "./json.js";
+export * from "./jsonschema.js";
 export * from "./export.js";
 export * from "./import.js";
 export * from "./upgrade.js";
-export * from "./auto.js";
+export * from "./compare.js";
+export * from "./autoupdate.js";
 export * from "./comparator.js";
 export * from "./metadata.js";
