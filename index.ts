@@ -58,22 +58,33 @@ async function main() {
     items.map((item) => [nameOfItem(item), item]),
   )
 
-  const categoriesCountRange = {
-    min: Math.ceil(items.length / 5),
-    max: Math.ceil(items.length / 3),
+  let categories = process.argv.slice(3)
+
+  if (categories.length === 0) {
+    console.log("Generating categories...")
+    const response = await generateText({
+      model: ollama("deepseek-r1:8b"),
+      system: `You are a code analyzer. You will be given a list of signatures for source code items (functions, constants, etc). Your task is to suggest a concise set of categories that can be used to organize these items based on their functionality or purpose. Categories are single words, all-lowercase, and MUST NOT be "index" or "${stem}".`,
+      prompt: structuredClone(items).map(signature).join("\n"),
+      output: Output.array({
+        element: type.string,
+      }),
+    })
+
+    categories = response.output
   }
 
-  console.log("thokang...", categoriesCountRange)
+  console.log("Categorizing...", categories)
   const response = streamText({
-    model: ollama("qwen3:4b"),
-    system: `You are a code analyzer. You will be given a list of item names (functions, constants, etc) extracted from a source code file. Your task is to categorize these items into anywhere between ${categoriesCountRange.min} and ${categoriesCountRange.max} categories based on their functionality. The category names MUST NOT contain spaces and must be all lowercase, as they will be used to construct file names. Prefer single words for category names if possible. NEVER use "${stem}" or "index" as category names. NEVER use less than ${categoriesCountRange.min} or more than ${categoriesCountRange.max} categories, or i'll kill you.`,
+    model: ollama("deepseek-r1:8b"),
+    system: `You are a code analyzer. You will be given a list of item names (functions, constants, etc) extracted from a source code file. Your task is to categorize these items into the following categories: ${categories.map((c) => JSON.stringify(c)).join(", ")}`,
     prompt: Object.keys(byName)
       .map((name) => `- ${name}`)
       .join("\n"),
     output: Output.array({
       element: type({
         item: "string",
-        category: "string",
+        category: type.enumerated(...categories),
       }),
     }),
   })
@@ -93,8 +104,6 @@ async function main() {
       (item) => pairs.find((p) => nameOfItem(item) === p.item)!.category,
     )
   })
-
-  const categories = [...categorized.keys()]
 
   console.log({ categories })
 
@@ -143,9 +152,14 @@ async function main() {
   }
 }
 
-function normalCode(node: ASTNode | ASTNode[], newlines = 1): string {
+function normalCode(
+  node: ASTNode | ASTNode[],
+  join: string | number = 1,
+): string {
   if (Array.isArray(node)) {
-    return node.map((n) => normalCode(n)).join("\n".repeat(newlines))
+    return node
+      .map((n) => normalCode(n))
+      .join(typeof join === "string" ? join : "\n".repeat(join))
   }
   return recast.prettyPrint(node).code
 }
@@ -225,6 +239,29 @@ function analyzeVitestImport(node: ASTNode): undefined | string {
 
   if (rootTestNames.length !== 1) return undefined
   return rootTestNames[0]
+}
+
+function signature(node: ASTNode): string | undefined {
+  switch (node.type) {
+    case "ExportNamedDeclaration": {
+      const sign = { ...node }
+      delete sign.declaration.body
+      return normalCode(sign)
+    }
+    case "FunctionDeclaration": {
+      const sign = { ...node }
+      delete sign.body
+      return normalCode(sign)
+    }
+    case "VariableStatement": {
+      const sign = node.declarations[0]
+      delete sign.init
+      return normalCode(sign)
+    }
+    default:
+      console.warn("Unsupported signature extraction for: " + normalCode(node))
+      return undefined
+  }
 }
 
 await main()

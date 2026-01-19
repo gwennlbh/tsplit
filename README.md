@@ -16,7 +16,7 @@ have a CLI to do this, and maybe a command to do it automatically on every file 
 
 TODO
 
-- [ ] add a mode where you give it the categories
+- [x] add a mode where you give it the categories
 - [ ] turn all items into exports, and import all items from all other files into each file (things like linters and knip should be run by the user afterwards to clean stuff up)
 - [ ] pretty UI to show progress, what went where, etc
 - [ ] UI to tweak results after llm finishes
