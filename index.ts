@@ -58,10 +58,15 @@ async function main() {
     items.map((item) => [nameOfItem(item), item]),
   )
 
-  console.log("thokang...")
+  const categoriesCountRange = {
+    min: Math.ceil(items.length / 5),
+    max: Math.ceil(items.length / 3),
+  }
+
+  console.log("thokang...", categoriesCountRange)
   const response = streamText({
     model: ollama("qwen3:4b"),
-    system: `You are an expert TypeScript code analyzer. You will be given a list of TypeScript item names (functions, constants, etc) extracted from a source code file. Your task is to categorize these items into several categories based on their functionality. The category names must not contain spaces and must be all lowercase, as they will be used to construct file names. Prefer single words for category names if possible, otherwise separate words with dashes. The name of the file you're analyzing is ${path.basename(bigfilepath)} (so don't use its name as a category). Never use a item's name as the category name, unless it's really necessary. Never make one category per item. Don't prefix category names with "${stem}-".`,
+    system: `You are a code analyzer. You will be given a list of item names (functions, constants, etc) extracted from a source code file. Your task is to categorize these items into anywhere between ${categoriesCountRange.min} and ${categoriesCountRange.max} categories based on their functionality. The category names MUST NOT contain spaces and must be all lowercase, as they will be used to construct file names. Prefer single words for category names if possible. NEVER use "${stem}" or "index" as category names. NEVER use less than ${categoriesCountRange.min} or more than ${categoriesCountRange.max} categories, or i'll kill you.`,
     prompt: Object.keys(byName)
       .map((name) => `- ${name}`)
       .join("\n"),
